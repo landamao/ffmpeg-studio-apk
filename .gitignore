@@ -1,0 +1,24 @@
+# 本机工具链与本地产物（不入库）
+/.tools/
+/shots/
+/安装包/
+*.apk
+
+# Android 构建产物与本地配置
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/keystore.properties
+android/signing/
+android/start-emulator.ps1
+android/app/ui2.xml
+android/app/ui3.xml
+android/app/v2.png
+
+# IDE / 系统
+.idea/
+*.iml
+.DS_Store
+Thumbs.db

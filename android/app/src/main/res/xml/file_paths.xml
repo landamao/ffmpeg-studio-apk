@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 覆盖整个共享存储（输出文件在 /storage/emulated/0/Movies 等） -->
+    <external-path name="external_storage" path="." />
+    <!-- 旧版本回退时写在应用外部专属目录 -->
+    <external-files-path name="app_external_files" path="." />
+    <files-path name="app_files" path="." />
+</paths>
