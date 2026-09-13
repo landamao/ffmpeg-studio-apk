@@ -1,152 +1,82 @@
-# FFmpeg Studio（Android 原生版）
+# FFmpeg Studio
 
-从同目录的 `index.html`（移动端 Web UI 预览版）完整移植的 **Kotlin + Jetpack Compose** 原生安卓应用，实现了 Web 版的全部功能与视觉风格，并接入了**真实 FFmpeg 转码引擎**（Web 版为模拟执行，Android 版可实际转码）。
+Android 原生 FFmpeg 转码器。真实调用 FFmpeg 引擎转码——不是命令行包装器,也不是模拟演示:选文件、调参数、看实时进度,输出直接进系统媒体库。免费、无广告、完全离线。
 
-## 功能对照（Web 版 → Android 版）
+[下载最新版 APK](https://github.com/landamao/ffmpeg-studio-apk/releases/latest) · [更新日志](CHANGELOG.md) · [问题反馈](https://github.com/landamao/ffmpeg-studio-apk/issues)
 
-| 功能 | 说明 |
+## 功能特性
+
+**转码核心**
+
+- 内置 [ffmpeg-kit](https://github.com/AntonKarpenko/ffmpeg-kit)(full-gpl,FFmpeg n8.1.2):H.264 / H.265 / VP9 / AAC / MP3 / FLAC 等编码器真实可用,也可复制流(copy)不重编码
+- 文件经系统 SAF 选择器选取,`content://` 直读不复制;输出经 MediaStore 写入系统媒体库(视频 → `Movies/FFmpegStudio`,音频 → `Music/FFmpegStudio`,GIF → `Pictures/FFmpegStudio`)
+- 执行日志页实时显示:百分比、已编码时长、帧率、处理速度,可随时停止;执行统计中的「速度 x.x」= 相对实时的处理速度,预计耗时 ≈ 媒体时长 ÷ 速度
+- 带空格/中文的文件名与参数安全处理(`FFmpegKitConfig.parseArguments` 切分,单/双引号均可分组)
+
+**参数控制**
+
+- 视频:编码器(H.264/H.265/VP9/copy/自定义)、CRF 0–51、preset 9 档、分辨率(预设+自定义)、帧率 0–240(默认/丢帧/混合补帧/平滑插帧)、移除视频
+- 音频:编码器(AAC/MP3/FLAC/WAV/copy/自定义)、码率(档位+自由输入)、移除音频
+- 裁剪时间:一起 / 分开 / 不设置;秒数与时:分:秒双格式自动换算;终点 -to / -t;分开模式自动生成 trim/atrim 的 `-filter_complex`
+- 输出:9 种容器格式 + 自动/跟随源文件/自定义(按流与编码自动选容器);输出路径模板(`<raw_dir>` `<raw_name>` `<ext>` `<N>` `<T,val=…>`,重名自动递增)
+- 可选:覆盖已有文件、完成后删除源文件、覆盖源文件、追加自定义参数
+
+**预设与历史**
+
+- 参数预设与原始命令预设:星标显示到主页、长按拖动排序、每行 2/3/4 列可调
+- 原始命令模式:直接编辑 ffmpeg 命令,保存时自动把 `-c:v -crf -preset -vf -r -c:a -b:a -an -vn -ss -to -t` 映射回控件,映射不了的进自定义参数
+- 历史记录:全部/成功/失败筛选、视频缩略图、平均帧率/速度、完整日志,可一键加载回工作台
+
+**界面与体验**
+
+- 单 Activity + Jetpack Compose,完整浅色/深色两套配色
+- 主页快速开始网格(星标预设,最多 6 个)、本周概览统计、最近文件
+- 退出重进保留工作台全部状态(参数、已选文件、折叠状态)
+- AI 助手界面预留(未实现,界面如实标注)
+
+## 下载
+
+到 [Releases](https://github.com/landamao/ffmpeg-studio-apk/releases/latest) 下载:
+
+| 文件 | 用途 |
 |---|---|
-| 主页 | 快速开始网格（星标预设、长按拖动排序、最多 6 个）、本周概览统计、最近文件、从文件选择 |
-| 工作台 | 文件卡片（SAF 选择器）、预设块（展开/收起、每行 2/3 列、保存为预设、查看详情）、原始命令块（内联编辑 + 大窗编辑） |
-| 视频参数 | 移除视频（-vn）、编码器（H.264/H.265/VP9/copy/自定义）、CRF 滑条+数字输入（0–51）、Preset（9 档+自定义）、分辨率（预设+自定义 W:H）、帧率（0–240，默认/丢帧/混合补帧/平滑插帧四种方式） |
-| 音频参数 | 移除音频（-an）、编码器（AAC/MP3/FLAC/WAV/copy/自定义）、码率（档位+自由输入，自动规范化 96k/1.5M 等） |
-| 裁剪时间 | 一起 / 分开 / 不设置 三种模式；秒数 与 时:分:秒 双格式（切换时自动换算全部输入）；终点方式 -to / -t；分开模式用 trim/atrim 滤镜并自动生成 -filter_complex 与 -map |
-| 输出 | 9 种容器格式；输出路径模板（`<raw_dir>` `<raw_name>` `<ext>` `<N>` `<T,val=…>` 占位符、光标处插入、合法性校验、`<N>` 重名自动递增）；覆盖已有文件（-y）；完成后删除源文件；覆盖源文件（先临时输出成功后移回） |
-| 高级 | 追加自定义参数（追加到 -i 之后） |
-| 命令预览 | 工作台底部实时命令条（可收起/展开角标、复制、查看完整命令），逻辑与 Web 版 buildCmd 完全一致（含 GIF 特殊分支） |
-| 执行 | 确认执行弹层（输入/输出/预设/视频/音频/选项/完整命令）→ 执行日志（真实进度、耗时、彩色日志、停止、收起后 FAB/顶栏重开）。**真实调用 ffmpeg 转码**：进度按媒体时长实时解析，输出经 MediaStore 写入系统媒体库 |
-| 预设管理 | 新建参数预设 / 原始命令预设；星标显示到主页；使用 / 编辑 / 删除（原始命令不可删）；长按拖动排序（与主页、工作台顺序同步） |
-| 预设编辑 | 名称 / 备注 / 类型（参数预设 | 原始命令）/ 命令片段（保存时解析 -c:v -crf -preset -vf -r -c:a -b:a -an -vn -ss -to -t 并映射回控件，无法映射的进入自定义参数）/ 显示在主页 |
-| 历史 | 全部 / 成功 / 失败 筛选；展开查看输入、输出、完整命令、完整日志（逐项复制）；失败项查看完整日志；加载到工作台；删除 |
-| 设置 | 默认输出目录（可改）、完成后保留日志、主题（跟随系统/浅色/深色，含完整深色配色）、恢复内置预设、AI 设置入口、关于（版本/许可/隐私说明） |
-| AI 助手 | 任意页顶栏入口；聊天式界面；按关键词生成本地模拟参数（1080p/音频提取/GIF/速度/质量）；错误演示（含 401 完整报错、复制）；建议可「写入原始命令」或「追加为自定义参数」；AI 设置页（启用开关、Base URL、API Key、模型、测试连接——与 Web 版相同的本地模拟） |
+| `FFmpeg.Studio_x.y.z-arm64.apk` | 绝大多数手机 |
+| `FFmpeg.Studio_x.y.z-x86_64.apk` | 模拟器 |
 
-## 真实转码（v0.4.0）
-
-- 引擎：[ffmpeg-kit 社区分支](https://github.com/AntonKarpenko/ffmpeg-kit) `com.antonkarpenko:ffmpeg-kit-full-gpl:2.2.1`（FFmpeg n8.1.2，内置 libx264 / libx265 / libvpx-vp9 / libmp3lame 等，应用内所有预设的编码器都真实可用），APK 按 ABI 拆分：arm64-v8a（手机）/ x86_64（模拟器）
-- 输入：SAF `content://` 通过 FFmpegKit 的 SAF 协议直接读取，无需复制
-- 输出：通过 MediaStore 写入系统媒体库（视频→`Movies/FFmpegStudio`，音频→`Music/FFmpegStudio`，GIF→`Pictures/FFmpegStudio`），带 IS_PENDING 原子落盘；Android 10 以下回退应用专属目录
-- 「完成后删除源文件」= 对源 URI 执行 delete；「覆盖源文件」= 成功后把结果写回源文件
-- 进度：MediaMetadataRetriever 取总时长 + FFmpegKit Statistics 回调实时计算百分比
-- 空格路径：执行前用 ffmpeg-kit 官方 `FFmpegKitConfig.parseArguments` 切分参数（与 shell 一致，单/双引号均可分组），带空格的路径/参数加引号即可；参数模式下输入输出走 SAF 协议（URL 编码，天然无空格问题），输出文件名中的空格原样保留
-- 许可：full-gpl 构建含 GPL 组件，应用整体需遵循 **GPL v3** 开源
-
-改进项：Web 版文件选择是 5 条模拟数据，Android 版使用 **SAF 系统文件选择器**（真实文件，最近使用自动记录，主页最近文件**左滑后点击「移除」**两步删除）。v0.4.2 起**无任何内置示例数据**：全新安装时历史、最近文件为空，「本周概览」显示真实统计 0（已处理/成功/**成功率**）。v0.4.3：执行日志页顶部**实时易读摘要**（正在处理 · 23% · 已编码 2.4 秒 / 10.0 秒 · 11 帧/秒 · 速度 0.37x），完成态显示用时/输出体积/**平均帧率/平均速度**，摘要自动换行。v0.4.4：所有黑框区域（执行日志、历史日志、完整命令/报错、AI 命令块、命令预览条）**长按可选中复制**，单个容器内支持跨行选择，点空白处清除选中。
+系统要求 Android 8.0+(minSdk 26)。release 包经 R8 混淆与资源收缩,arm64 包约 45MB。
 
 ## 构建
 
-需 JDK 17+ 与 Android SDK（Android Studio 首次打开会自动生成本机 `local.properties`；命令行构建需自建）。
+需 JDK 17+ 与 Android SDK。Android Studio 直接打开 `android/` 目录,或命令行:
 
 ```bash
 cd android
-./gradlew assembleDebug   # 或在 Android Studio 中直接打开 android/ 目录
+./gradlew assembleDebug     # 调试包
+./gradlew assembleRelease   # 正式包
 ```
 
-产物：按 ABI 拆分，**手机装 arm64-v8a 包**，x86_64 包仅供模拟器测试。每次打包均提升 versionCode/versionName，关于页版本号运行时从包信息读取。minSdk 26 / targetSdk 36。
+`assembleRelease` 需要 `android/keystore.properties` 指向签名文件(格式如下);文件不存在时仍会构建,产出未签名包:
 
-## 发布签名（v0.5.0 起）
+```properties
+storeFile=signing/ffmpeg-studio.keystore
+storePassword=...
+keyAlias=...
+keyPassword=...
+```
 
-- 包名：`com.landamao.ffmpegstudio`（namespace 仍为 `com.ffmpegstudio`，源码不变）
-- 密钥：`android/signing/ffmpeg-studio.keystore`（alias `ffmpegstudio`），密码在 `android/keystore.properties` — **两者均不入库，务必备份，丢失后无法给老用户发更新**；更换密钥后老版本必须卸载重装；没有这两个文件时 `assembleRelease` 仍可构建（未签名包）
-- 打正式包：`gradle assembleRelease`（自动用 keystore.properties 签名）；v0.5.1 起 release 开启 **R8 混淆 + 资源收缩**，dex 从 ~44MB（material-icons-extended 全量图标）降到 ~2.4MB，arm64 包 ~45MB
-- 混淆映射表在 `app/build/outputs/mapping/release/mapping.txt`（解崩溃堆栈用，随包存档）
+产物按 ABI 拆分;每次发版均提升 versionCode/versionName,关于页版本号运行时从包信息读取。
 
-> 本机 `.tools/` 目录内含本次构建使用的 Gradle 8.14.3 与 Temurin JDK 21（仅本机构建用，不入库）。
+## 技术要点
 
-## 已在模拟器上验证
-
-已在本地模拟器（Pixel 6 布局 · API 35）实机验证：主页/工作台/历史/设置渲染与深色主题、SAF 文件选择（真实文件 + 最近文件持久化）、命令预览条与完整命令、确认执行弹层、模拟执行（进度/彩色日志/停止/成功徽标）、历史记录生成、AI 聊天（关键词建议 + 写入原始命令/追加自定义参数）、原始命令模式切换、预设管理页（星标/使用/编辑/删除）。
-
-## 技术说明
-
-- 单 Activity + Jetpack Compose，自绘组件（折叠块、分段控件、小开关、下拉选择、拖拽排序）逐一对齐 Web 版 CSS 交互
-- 配色严格取自 Web 版 CSS 变量（浅色/深色两套完整色板）
-- 持久化：SharedPreferences + JSON（预设 `ff-presets-v3`、主题、AI 配置、输出目录、历史、最近文件），与 Web 版 localStorage 键名对齐
-- 已在模拟器实测：选择真实视频 → 视频压缩预设 → 执行，输出 `/Movies/FFmpegStudio/bunny_1080p_out.mp4` 为合法 H.264 MP4
-- 空格路径实测：① 文件名带空格+中文的 `space test 视频.mp4` 经「视频压缩」转码成功，输出含空格文件名合法可播；② 原始命令模式 `title='my home movie'`（单引号含空格）作为单个参数传入，输出文件 ©nam 元数据验证为 `my home movie`
-
-## v0.6.0 更新（2026-09-13）
-
-- 修复长按拖动排序：换位重组时 `pointerInput(id)` 重建导致手势中断（拖一下就断），网格/列表项改用 `key(id)` 让节点跟随数据；换位过程不再刷 toast，拖完提示一次
-- 修复历史页滚动重置：`ClearableSelection` 的 `key(selEpoch)` 重建子树会把内部 `rememberScrollState()` 一起重建，滚动状态提到容器外
-- 修复执行日志闪退：`SelectionContainer` 套在 `LazyColumn` 上，选中后滚动、离屏项回收即崩（Compose 已知限制）；日志区改为「复制全部」一键复制完整日志，AI 聊天命令块同步处理
-- 「打开」按钮：历史详情的输入/输出路径、执行完成后的输出路径，均可调系统应用打开（FileProvider `${applicationId}.files`，见 `res/xml/file_paths.xml`；`AppViewModel.openFile`）
-- 历史记录加缩略图：优先输入文件取视频首帧（MediaMetadataRetriever，IO 线程 + LRU 缓存，最大边 256px），取不到显示胶片占位
-- 「视频压缩」出厂预设 crf 23→26（`Defaults`；老设备存过的值需在 设置→恢复内置预设 刷新），工作台默认值同步 26；裁剪默认改「不设置」（原「一起·未填」）
-- v0.6.0 起签名证书为用户自建密钥（CN=landamao），与 v0.5.1 的临时密钥不同：装过 v0.5.1 的手机需先卸载再安装
-
-## v0.6.1 修复（2026-09-13）
-
-- **重写拖拽排序实现**（`DragDrop.kt`）：旧实现平移量依赖布局回调重算——抓起即跳、拖动中不跟手、跨过邻居瞬移，且「最近中心」兜底导致手指停在两项之间时每帧来回换位。新实现：手指增量累计进 `dragPosition` 由 graphicsLayer 跟手（纯绘制层，不依赖每帧布局）；换位后在 `onGloballyPositioned` 反向补偿槽位差保持视觉连续；命中判定改为「被拖项视觉中心落入其他项矩形」，越过才换位，无抖动
-- 修复「打开」报「没有应用」：Application 上下文启动 Activity 缺 `FLAG_ACTIVITY_NEW_TASK`（异常被笼统捕获误报）；改用 `Intent.createChooser` 系统选择器 + NEW_TASK，每次可选应用
-
-## v0.7.0 更新（2026-09-13）
-
-- **拖拽排序改为「松手才提交」**：拖动全程只做绘制层平移（跟手浮动），期间不换序不重组——跨父容器的项在换位重组时会被销毁重建、手势必断（主页分行网格此前「拖一下就没了」的根因）；松手按视觉中心落点一次性换序，落在空隙原样弹回。主页拖动中行级 zIndex 保证卡片浮在其它行之上
-- ClearableSelection 仅「原地轻点」才重建容器（无位移 + 未消费 + <350ms），滚动/滑动手势一律不重建，避免打断惯性滚动
-- **容器格式新增「自动 / 跟随原文件 / 自定义」**：auto 按流与编码选容器（仅音频：AAC→m4a、MP3→mp3、FLAC→flac、Opus/Vorbis→ogg、PCM→wav、未知→mka；重编码视频默认 MP4，音频为 FLAC/PCM 或编码未知用 MKV；复制视频流跟随源；GIF 出 GIF），源编码用 MediaExtractor 异步探测（`logic/MediaProbe.kt`，带 LRU）；source 直接用源后缀；custom 用自填后缀
-- 「提取音频」出厂预设改为 **copy 流 + 自动容器**（不再强制转 MP3）
-- 输出文件名无后缀时自动补 "." + 容器后缀（ffmpeg 靠后缀猜 muxer，缺了会报 Unable to find a suitable output format）
-- 工作台容器选择下方实时显示解析结果（"当前解析：.m4a"），预设详情格式标签同步
-
-## v0.7.1 修复（2026-09-13）
-
-- 拖拽排序**恢复实时目标位置预览**：拖动时其它项用 graphicsLayer 让位偏移模拟换位（零重组、手势不会中断），命中判定用「有效矩形」（布局矩形+让位偏移）带天然滞回，停在两项之间不抖；松手一次性提交，落空弹回（`DragDrop.kt` 重写）
-- **SelectField 从贴地下拉改为底部弹层**：选项多时（容器格式 12 项）原 DropdownMenu 向下展开超出屏幕、远处选项够不着；改为复用 SheetDialog 从底部滑出、可滚动、当前项高亮打勾，所有选择场景（编码器/分辨率/帧率/容器/协议）统一
-
-## v0.7.2 修复（2026-09-13）
-
-- 撤销 v0.7.1 的底部弹层选择器（渲染在页面内部导致占版面、点外部不关闭），**恢复紧凑 DropdownMenu**：贴着字段（手指位置）展开、点外部自动关闭；增强：选项列表超高时内部可滚动（heightIn 380dp）、当前项高亮打勾、文案 maxLines=1 不折行
-- 拖拽排序实时预览为 v0.7.1 方案（绘制层让位、松手提交）
-
-## v0.7.3 修复（2026-09-13）
-
-- **修复下拉「自定义…」失效**：旧逻辑是点自定义就把值改成另一个标准值（如 FLAC→AAC）试图让输入框出现——值恰好等于该标准值时纯无反应，否则表现为莫名重置。现给 WsState 增加 vcodecCustom/presetCustom/resCustom/acodecCustom 四个显式模式开关：点「自定义…」进入输入模式（输入框预填当前值），选标准项退出；应用预设时按值是否标准自动设位。标准选项表抽到 `data.StdValues` 供 UI 与 VM 共用
-- 主页拖拽遮挡修复：拖动行 zIndex 2、含让位偏移的行 zIndex 1——向上拖时让位卡片不再被下一行盖住「消失」
-
-## v0.7.4 修复（2026-09-13，模拟器实机复现后修复）
-
-- **预设管理页拖拽「行消失」根因修复**：行的 `.background` 写在 `itemModifier`（平移层）之外——拖拽让位时背景留在原位、内容平移出裁剪区，视觉上整行消失。背景移入平移层，整行作为整体位移（与主页卡片结构对齐）
-- 被拖项增加**视口钳制**（`DragGridState.containerModifier` 挂在裁剪容器上：主页=滚动区、预设页=圆角卡片本身），拖出裁剪边界会被拦住，不再「滑出即消失」；行宽与容器同宽时跳过水平钳制（否则 24px 边距会把行永久推偏）
-- 空自定义编码器防护：buildCmd / paramsToCmdFragment 跳过空 `-c:v`/`-c:a`/`-preset`，避免产生空参数命令
-- 本次通过模拟器（headless，测完即关）+ adb motionevent 实机复现：6 卡主页拖拽、预设页跨 5 行拖拽、松手提交、toast，全部通过
-
-## v0.7.5 修复（2026-09-13）
-
-- 工作台文件卡与预设块的间距对齐（补 10dp，与下方参数块一致）
-- 工作台文件卡选中文件后显示**视频首帧预览图**（取不到帧回落胶片图标）；缩略图组件抽为公共 `ui.MediaThumb`（LRU + IO 线程取帧），历史记录与文件卡共用
-
-## v0.7.6 更新（2026-09-13）
-
-- 设置 → 关于补充**作者信息**：GitHub 主页、项目地址、QQ 群、Telegram（点击直接跳转对应链接/加群）+ 版权声明；去掉「真实转码版」字样，「开源许可」改为指向 GitHub 仓库
-- 主页删去「长按拖动排序」「左滑后点击移除」两处提示文字
-- 工作台 / AI 设置 / 预设编辑页**点击输入框以外区域收起键盘**
-- 执行日志窗口的「输出文件」路径颜色修正（原用深底配色的浅灰 monospace，浅色主题下几乎不可见）
-- **AI 功能如实标注未实现**：移除全部模拟行为（假连接测试、假 401 报错、正则拼命令的假回复），AI 设置与聊天界面显示「未实现」提示
-
-## v0.7.7 更新（2026-09-13）
-
-- 预设网格设置移到预设管理页：「每行数量」（2/3/4）与「默认展开行数」（1/2/3），持久化保存
-- 预设管理页「新建预设 / 添加原始命令」两个按钮合并为**右下角加号悬浮按钮**（原始命令在编辑器里切换类型即可）
-- **退出应用重进保留状态**：当前页面、工作台全部参数（含已选文件）、参数块折叠状态在 ON_STOP 时保存，启动时恢复
-- **历史记录改为一条一个 JSON 文件**（filesDir/history/），不再全塞在 SharedPreferences；仍保留最近 100 条
-- 修复历史时间永远显示「刚刚」：改为存完成时刻的时间戳，展示时实时计算相对时间（刚刚 / n 分钟前 / n 小时前 / 超过一天显示日期）
-- 历史卡片新增**平均帧率 / 平均速度**（原日志窗口完成摘要里的平均值挪到这里）
-- 修复「完成后保留日志」开关无效：关闭后历史记录不再写入日志内容（展开详情不显示日志块）
-
-## 备注
-
-- 执行日志/统计里的「速度 1.87x」= 相对实时的处理速度：每实际 1 秒编码 1.87 秒的媒体内容，数值越大越快，预计耗时 ≈ 媒体时长 ÷ 速度。
-
-## v0.7.8 修正（2026-09-13）
-
-- 状态恢复行为修正：**启动固定进入主页**，只恢复工作台状态（参数、已选文件、折叠状态）——不再恢复上次停留的页面
-
-## v1.0.0 更新（2026-09-13）
-
-- **首个开源版本**：完整源码发布到 GitHub（本仓库），附 GPL v3 LICENSE（ffmpeg-kit full-gpl 要求）；Release 附 arm64 / x86_64 正式签名 APK
-- 签名密钥与密码、本机 SDK/代理/工具链配置均不入库（见 `.gitignore`）
+- 自绘组件(折叠块、分段控件、小开关、下拉选择、拖拽排序),拖拽排序为绘制层让位 + 松手提交方案,见 `ui/DragDrop.kt`
+- 命令构建与原始命令解析:`logic/CommandBuilder.kt`;执行、进度解析、SAF/MediaStore 交互:`data/AppViewModel.kt`
+- 容器「自动」模式用 MediaExtractor 异步探测源编码:`logic/MediaProbe.kt`
+- 持久化:SharedPreferences + JSON(预设、主题、输出目录);历史为一条一个 JSON 文件(`filesDir/history/`,保留最近 100 条)
+- 「打开」输出文件用 FileProvider(`${applicationId}.files`,见 `res/xml/file_paths.xml`)
+- 已在 Pixel 6 布局 · API 35 模拟器实测:真实转码、空格+中文文件名、GIF 输出、原始命令模式、深色主题
 
 ## 许可
 
-Copyright (C) 2026 landamao · 基于 [GPL v3](LICENSE) 开源（ffmpeg-kit full-gpl 含 GPL 组件）。
+[GPL-3.0](LICENSE) · Copyright (C) 2026 landamao
+
+本项目使用 [ffmpeg-kit](https://github.com/AntonKarpenko/ffmpeg-kit) full-gpl 构建,其含 GPL 组件(libx264 等),因此本项目整体以 GPL v3 开源。
